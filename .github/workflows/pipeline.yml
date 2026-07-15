@@ -79,6 +79,7 @@ jobs:
 
       # PATH A: Generates standalone production APK/AAB binary if native configurations change OR no builds exist yet
       - name: Deploy Fresh Native Base Android Production Binary
+        id: deploy_native
         if: |
           steps.files_filter.outputs.native_configs == 'true' || 
           steps.build_check.outputs.force_apk_build == 'true'
@@ -86,6 +87,7 @@ jobs:
 
       # PATH B: Delivers lightweight Over-The-Air bundle directly matching the exact native runtime signature of the latest build
       - name: Ship Fast Over-The-Air (OTA) Production Channel Update
+        id: ship_ota
         if: |
           steps.build_check.outputs.force_apk_build == 'false' && 
           steps.files_filter.outputs.native_configs == 'false' && 
@@ -97,3 +99,23 @@ jobs:
           
           # Publishes to production channel restricted strictly to the current build fingerprint structure
           eas update --channel production --platform android --message "Automated target patch for latest APK build structure."
+
+      # =========================================================================
+      # --- POST-DEPLOYMENT STATUS HANDLERS (Pass / Fail / Rollback) ---
+      # =========================================================================
+
+      - name: Rollback EAS Update on Failure
+        if: failure() && steps.ship_ota.outcome == 'failure'
+        run: |
+          echo "OTA Update failed mid-deployment. Rolling back production channel to the last stable release..."
+          eas update --channel production --platform android --rollback --message "Automatic rollback initiated due to CI/CD pipeline failure."
+
+      - name: Pipeline Passed
+        if: success()
+        run: |
+          echo "SUCCESS: All stages cleared. The application has been successfully deployed to production."
+
+      - name: Pipeline Failed
+        if: failure()
+        run: |
+          echo "FAILURE: The pipeline encountered an issue. Review the logs above to identify the failing step."
